@@ -22,10 +22,13 @@ Installation (Windows - PowerShell)
 
 ```powershell
 python -m venv venv
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 .\venv\Scripts\Activate.ps1
 pip install --upgrade pip
 pip install -r requirements.txt
 ```
+
+> **Note:** The `Set-ExecutionPolicy` command above only affects the current PowerShell session and reverts when you close the terminal.
 
 Installing FFmpeg
 - Winget: `winget install -e --id Gyan.FFmpeg`.
@@ -33,9 +36,12 @@ Installing FFmpeg
 Running the web interface
 
 ```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 .\venv\Scripts\Activate.ps1
 python web.py
 ```
+
+> **Note:** The `Set-ExecutionPolicy` command above only affects the current PowerShell session.
 
 - Open your browser at `http://localhost:5000`.
 - Paste a YouTube URL, click "Get Resolutions", choose a resolution, and press "Download".
@@ -43,7 +49,6 @@ python web.py
 Using the CLI
 
 ```powershell
-.\venv\Scripts\Activate.ps1
 python app.py
 ```
 
