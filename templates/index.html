@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>YouTube Downloader</title>
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/static/styles.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="container header-centered">
+        <div class="brand">
+          <!-- simple YouTube-like SVG icon -->
+          <svg width="48" height="32" viewBox="0 0 48 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+            <rect width="48" height="32" rx="6" fill="#FF0000" />
+            <path d="M20 9.5L32 16L20 22.5V9.5Z" fill="white" />
+          </svg>
+        </div>
+        <h1 class="main-title">YouTube Video Downloader</h1>
+        <p class="muted">Choose a YouTube video and download the resolution you want.</p>
+      </div>
+    </header>
+
+    <main class="container">
+      <div class="card">
+        <form id="fetch-form" class="form-row" onsubmit="return false;">
+          <input type="text" id="url" name="url" placeholder="Paste YouTube URL here" required>
+          <button id="fetch-btn" class="btn primary">Get Resolutions</button>
+        </form>
+        <p class="note">Downloaded files will be saved in the <strong>downloads/</strong> folder.</p>
+      </div>
+
+      <div id="meta-card" class="card" style="display:none;margin-top:18px;">
+        <div class="meta-row">
+          <div class="meta-left"><img id="meta-thumb" class="thumb" src="" alt="thumb"/></div>
+          <div class="meta-right">
+            <h2 id="meta-title" class="video-title"></h2>
+            <div id="meta-author" class="muted"></div>
+            <div id="meta-length" class="muted"></div>
+          </div>
+        </div>
+
+        <div style="margin-top:12px">
+          <label class="muted">Select resolution</label>
+          <div class="custom-select" id="res-select" data-value="">
+            <button type="button" class="custom-select-trigger" id="res-trigger">Select resolution</button>
+            <div class="custom-options" id="res-options" hidden>
+              <!-- options populated dynamically -->
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-top:12px">
+          <div class="progress-wrap" style="display:none" id="progress-wrap">
+            <div class="progress">
+              <div class="progress-bar" id="progress-bar" style="width:0%"></div>
+            </div>
+            <div class="progress-meta"><span id="progress-pct">0%</span> <span id="progress-msg" class="muted"></span></div>
+          </div>
+        </div>
+
+        <div style="margin-top:12px;text-align:right">
+          <button id="download-btn" class="btn primary" disabled>Download</button>
+        </div>
+        <div id="status" style="margin-top:10px;color:var(--muted)"></div>
+      </div>
+
+      <footer class="footer">
+        <small>Made By Archevea</small>
+      </footer>
+    </main>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>

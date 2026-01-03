@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+    <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Choose Resolution</title>
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/static/styles.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="container meta-row">
+        <a class="back-link" href="/">← Back</a>
+        <div class="meta-left">
+          {% if thumbnail %}
+            <img class="thumb" src="{{ thumbnail }}" alt="thumbnail" width="320">
+          {% endif %}
+        </div>
+        <div class="meta-right">
+          <h2 class="video-title">{{ title }}</h2>
+          {% if author %}<div class="muted">Channel: {{ author }}</div>{% endif %}
+          {% if length %}<div class="muted">Duration: {{ length }}</div>{% endif %}
+        </div>
+      </div>
+    </header>
+
+    <main class="container">
+      <div class="card">
+        <form action="/download" method="post" id="res-form">
+          <input type="hidden" name="url" value="{{ url }}">
+          <h3>Select resolution</h3>
+          <div class="res-grid">
+            {% for r in resolutions %}
+              <label class="res-card">
+                <input type="radio" name="resolution" value="{{ r }}" {% if loop.last %}checked{% endif %}>
+                <div class="res-info">
+                  <div class="res-title">{{ r }}</div>
+                  <div class="res-tags">
+                    {% if r in prog_map %}<span class="tag">progressive</span>{% endif %}
+                    {% if r in vidonly_map %}<span class="tag">video-only</span>{% endif %}
+                  </div>
+                </div>
+              </label>
+            {% endfor %}
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn primary">Download Selected</button>
+          </div>
+        </form>
+      </div>
+    </main>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>
