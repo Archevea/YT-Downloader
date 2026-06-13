@@ -146,14 +146,18 @@ def download(url, choice, out_dir):
     else:
         h = choice["height"]
         label = quality_label(h, choice["has60"])
-        # Codec priority:
+        # Video codec priority:
         #  1) H.264 (avc1) -> plays everywhere incl. QuickTime (available <=1080p)
         #  2) AV1 (av01)   -> for 2K/4K; native mp4, plays in VLC/IINA
         #  3) others       -> last resort (VP9 etc.)
+        # Audio: always prefer AAC (m4a). YouTube's "best" audio is often Opus,
+        # which Windows' built-in players can't decode inside an MP4 (video plays
+        # but no sound). AAC plays everywhere; only fall back to Opus if no AAC.
         # yt-dlp prefers 60fps by default at the same height.
         fmt = (
             f"bestvideo[height={h}][vcodec^=avc1]+bestaudio[ext=m4a]/"
-            f"bestvideo[height={h}][vcodec^=av01]+bestaudio/"
+            f"bestvideo[height={h}][vcodec^=av01]+bestaudio[ext=m4a]/"
+            f"bestvideo[height={h}]+bestaudio[ext=m4a]/"
             f"bestvideo[height={h}]+bestaudio/"
             f"best[height={h}]/best[height<={h}]"
         )
