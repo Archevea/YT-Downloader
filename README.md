@@ -1,71 +1,102 @@
-
 # YouTube Downloader
 
-A small YouTube video downloader with both a web interface and a command-line interface.
+A simple, terminal-based YouTube downloader. It uses `yt-dlp` and can download every quality up to **4K / 60fps**. You **don't need to install ffmpeg** on your system — everything is handled automatically.
 
-Summary
-- The project provides a web UI (`web.py`) and a CLI tool (`app.py`). It lists available video resolutions and downloads either a progressive stream (video + audio) or a video-only stream combined with an audio stream (merged via `ffmpeg` if available).
+## Features
 
-Features
-- Web interface: paste a YouTube URL, pick a resolution, and track download progress.
-- CLI: interactive terminal downloader with resolution selection.
-- Downloads are saved to the `downloads/` folder inside the project.
+- Paste a link → see the video's **title, channel, and duration**
+- Lists the qualities that **actually exist** for that video: 4K / 2K / 1080p / 720p / 480p / 360p / 240p / 144p and **MP3**
+- Automatically prefers **60fps** when available
+- 1080p and below download as **H.264** (plays in any player, including QuickTime)
+- Files are saved to your **Downloads** (`~/Downloads`) folder
+- Filename format: `Title [quality].mp4` — e.g. `Video [2160p60].mp4`
 
-Requirements
-- Python 3.8 or newer
-- `ffmpeg` for merging video-only + audio streams. If `ffmpeg` is not available, video and audio files may be left separate.
+## Requirements
 
-Dependencies
-- Install Python dependencies from `requirements.txt` (Flask, pytubefix, etc.).
+- **Python 3.10 or newer** (this is the only requirement)
+- No ffmpeg needed — the `static-ffmpeg` package downloads the required binaries automatically.
 
-Installation (Windows - PowerShell)
+---
+
+## Quick Start (recommended)
+
+The included run scripts set up the virtual environment and install dependencies on the first run, then launch directly on subsequent runs.
+
+### Windows
+
+**Double-click** `run.bat` — or run it in a terminal (CMD / PowerShell):
+
+```bat
+run.bat
+```
+
+### macOS
+
+Open a terminal in the project folder and run:
+
+```bash
+./run.sh
+```
+
+> If you get a "permission denied" error the first time: run `chmod +x run.sh` and try again.
+
+### Linux
+
+```bash
+./run.sh
+```
+
+The first run may take a bit longer because the ffmpeg binary is downloaded; subsequent runs are fast.
+
+---
+
+## Manual Usage
+
+If you prefer to set things up by hand instead of using the scripts:
+
+### Windows (PowerShell)
 
 ```powershell
 python -m venv venv
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
-.\venv\Scripts\Activate.ps1
-pip install --upgrade pip
+venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-```
-
-> **Note:** The `Set-ExecutionPolicy` command above only affects the current PowerShell session and reverts when you close the terminal.
-
-Installing FFmpeg
-- Winget: `winget install -e --id Gyan.FFmpeg`.
-
-Running the web interface
-
-```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
-.\venv\Scripts\Activate.ps1
-python web.py
-```
-
-> **Note:** The `Set-ExecutionPolicy` command above only affects the current PowerShell session.
-
-- Open your browser at `http://localhost:5000`.
-- Paste a YouTube URL, click "Get Resolutions", choose a resolution, and press "Download".
-
-Using the CLI
-
-```powershell
 python app.py
 ```
 
-- The CLI will ask for a YouTube URL and let you choose a resolution to download.
+> If PowerShell blocks script execution, allow it for the current session:
+> `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force`
 
-Where files are saved
-- Files are saved to the `downloads/` directory in the project root. If `ffmpeg` is unavailable, separate video/audio files will be saved instead of a merged MP4.
+### macOS / Linux
 
-Troubleshooting
-- Dependency errors: re-run `pip install -r requirements.txt` and review the error output.
-- FFmpeg not found: verify `ffmpeg -version` works in PowerShell and that `ffmpeg` is on your PATH.
-- Browser caching: if your changes to CSS/JS are not appearing, force reload (Ctrl+F5) or open DevTools and disable cache.
-- Permission issues: ensure the `downloads/` directory is writable by your user.
+```bash
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+python app.py
+```
 
-Development notes
-- The web server is started with `app.run(host='0.0.0.0', port=5000, debug=True)` in `web.py`. Change host/port or `debug` as needed.
-- Static assets are served from the `static/` directory. After editing CSS/JS, refresh the browser.
+---
 
-Contributing & License
-- This project is provided as-is for learning/demo purposes.
+## How It Works
+
+1. The program asks for a **YouTube link**.
+2. It shows the video's **title / channel / duration**.
+3. It lists the **qualities** available for that video; you pick a number.
+4. The file is downloaded, audio and video are merged automatically, and it's saved to your **Downloads** folder.
+
+## Player Note (resolutions above 1080p)
+
+YouTube offers **H.264** up to 1080p; those files play in any player, including **QuickTime**. However, for resolutions **above 1080p (2K / 4K)** YouTube only provides the **VP9 / AV1** codecs.
+
+**On macOS, QuickTime cannot play VP9 / AV1** — you'll get audio only, with no picture. For any file above 1080p, open it with a free player instead:
+
+- **[IINA](https://iina.io)** — macOS-native, recommended
+- **[VLC](https://www.videolan.org)** — works everywhere, reliable fallback
+
+On **Windows / Linux**, use **[VLC](https://www.videolan.org)** for these files as well (on Windows the built-in player may also need codec extensions for AV1/VP9).
+
+This is a **codec compatibility** issue — the file is not corrupted.
+
+## About ffmpeg
+
+This project does **not** install ffmpeg on your system. The `static-ffmpeg` package downloads a real ffmpeg binary into the virtual environment (`venv`) and uses it temporarily while the program runs. That's why the `ffmpeg` command won't work in your terminal — this is normal; ffmpeg is scoped to this app only and never touches your system.

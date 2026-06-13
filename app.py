@@ -1,168 +1,220 @@
-from pytubefix import YouTube
-from pytubefix.cli import on_progress
-import shutil
-import subprocess
-from pytubefix import YouTube
-from pytubefix.cli import on_progress
-import shutil
-import subprocess
-import os
-import tempfile
+"""
+YouTube Downloader (terminal)
+
+- Downloads via yt-dlp (including 4K/60fps)
+- No need to install ffmpeg on the system: it comes from the static-ffmpeg package
+- Files are saved to the user's Downloads (~/Downloads) folder
+"""
+
 import sys
-import re
+from pathlib import Path
+
+try:
+    import static_ffmpeg
+
+    # Adds ffmpeg + ffprobe binaries to PATH; yt-dlp finds them automatically.
+    static_ffmpeg.add_paths()
+except Exception:
+    # If static-ffmpeg is missing, fall back to a system-installed ffmpeg if present.
+    pass
+
+from yt_dlp import YoutubeDL
 
 
-def safe_filename(title):
-	name = f"{title}.mp4"
-	name = "".join(c for c in name if c not in '/\\?%*:|\"<>')
-	return name.strip() or "output.mp4"
+# Quality options: (height, display name). mp3 is added separately.
+QUALITY_NAMES = {
+    4320: "8K (4320p)",
+    2160: "4K (2160p)",
+    1440: "2K (1440p)",
+    1080: "1080p",
+    720: "720p",
+    480: "480p",
+    360: "360p",
+    240: "240p",
+    144: "144p",
+}
 
-def parse_height(res):
-	if not res:
-		return 0
-	m = re.match(r"(\d+)", res)
-	return int(m.group(1)) if m else 0
 
-def list_resolutions(yt):
-	res_set = set()
-	progressive_map = {}
-	video_only_map = {}
+def downloads_dir():
+    """The user's Downloads folder (created if it doesn't exist)."""
+    d = Path.home() / "Downloads"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
 
-	try:
-		prog_streams = yt.streams.filter(progressive=True, file_extension="mp4")
-	except Exception:
-		prog_streams = yt.streams.filter(progressive=True)
-	for s in prog_streams:
-		res = getattr(s, "resolution", None)
-		if res:
-			res_set.add(res)
-			# prefer higher bitrate progressive for same resolution
-			if res not in progressive_map:
-				progressive_map[res] = s
 
-	try:
-		adaptive_streams = yt.streams.filter(adaptive=True, file_extension="mp4")
-	except Exception:
-		adaptive_streams = yt.streams.filter(adaptive=True)
-	# get audio-only separately
-	try:
-		audio_streams = yt.streams.filter(only_audio=True, file_extension="mp4").order_by("abr").desc()
-	except Exception:
-		audio_streams = yt.streams.filter(only_audio=True)
+def format_duration(seconds):
+    if not seconds:
+        return "unknown"
+    seconds = int(seconds)
+    h, rem = divmod(seconds, 3600)
+    m, s = divmod(rem, 60)
+    if h:
+        return f"{h}:{m:02d}:{s:02d}"
+    return f"{m}:{s:02d}"
 
-	for s in adaptive_streams:
-		# skip audio-only here
-		if getattr(s, "only_audio", False):
-			continue
-		res = getattr(s, "resolution", None)
-		if res:
-			res_set.add(res)
-			if res not in video_only_map:
-				video_only_map[res] = s
 
-	audio_best = None
-	try:
-		audio_best = audio_streams.first()
-	except Exception:
-		audio_best = None
+def probe(url):
+    """Fetches the video info and available format list without downloading."""
+    with YoutubeDL({"quiet": True, "no_warnings": True}) as ydl:
+        return ydl.extract_info(url, download=False)
 
-	# return sorted list by numeric height
-	sorted_res = sorted(list(res_set), key=parse_height)
-	return sorted_res, progressive_map, video_only_map, audio_best
+
+def available_qualities(info):
+    """
+    Returns the heights that actually exist for this video and whether
+    60fps is available at each height. -> {height: has_60fps}
+    """
+    found = {}
+    for f in info.get("formats", []):
+        if f.get("vcodec") in (None, "none"):
+            continue  # skip audio-only streams
+        h = f.get("height")
+        if not h:
+            continue
+        is60 = (f.get("fps") or 0) >= 50
+        found[h] = found.get(h, False) or is60
+    return found
+
+
+def build_menu(info):
+    """Builds the list of options to show on screen."""
+    quals = available_qualities(info)
+    # Sort from highest to lowest
+    items = []
+    for h in sorted(quals.keys(), reverse=True):
+        name = QUALITY_NAMES.get(h, f"{h}p")
+        fps_tag = " 60fps" if quals[h] else ""
+        items.append({
+            "kind": "video",
+            "height": h,
+            "has60": quals[h],
+            "label": f"{name}{fps_tag}",
+        })
+    items.append({"kind": "mp3", "label": "MP3 (audio only)"})
+    return items
+
+
+def quality_label(height, has60):
+    """Quality tag appended to the filename, e.g. '2160p60'."""
+    return f"{height}p60" if has60 else f"{height}p"
+
+
+def progress_hook(d):
+    """Shows a simple single-line progress bar."""
+    if d.get("status") == "downloading":
+        total = d.get("total_bytes") or d.get("total_bytes_estimate")
+        downloaded = d.get("downloaded_bytes", 0)
+        pct = (downloaded / total) if total else 0
+        filled = int(pct * 20)
+        bar = "█" * filled + "░" * (20 - filled)
+        print(f"\rDownloading [{bar}] {pct * 100:3.0f}%", end="", flush=True)
+    elif d.get("status") == "finished":
+        print(f"\rDownloading [{'█' * 20}] 100%")
+
+
+def postproc_hook(d):
+    """Prints a short message when merging / mp3 conversion starts."""
+    if d.get("status") == "started":
+        name = d.get("postprocessor", "")
+        if name == "Merger":
+            print("Merging audio and video...")
+        elif name == "FFmpegExtractAudio":
+            print("Converting to MP3...")
+
+
+def download(url, choice, out_dir):
+    base = {
+        "quiet": True,
+        "no_warnings": True,
+        "noprogress": True,  # disable yt-dlp's noisy default output
+        "progress_hooks": [progress_hook],
+        "postprocessor_hooks": [postproc_hook],
+    }
+
+    if choice["kind"] == "mp3":
+        outtmpl = str(out_dir / "%(title)s [mp3].%(ext)s")
+        opts = {
+            **base,
+            "format": "bestaudio/best",
+            "outtmpl": outtmpl,
+            "postprocessors": [{
+                "key": "FFmpegExtractAudio",
+                "preferredcodec": "mp3",
+                "preferredquality": "320",
+            }],
+        }
+    else:
+        h = choice["height"]
+        label = quality_label(h, choice["has60"])
+        # Codec priority:
+        #  1) H.264 (avc1) -> plays everywhere incl. QuickTime (available <=1080p)
+        #  2) AV1 (av01)   -> for 2K/4K; native mp4, plays in VLC/IINA
+        #  3) others       -> last resort (VP9 etc.)
+        # yt-dlp prefers 60fps by default at the same height.
+        fmt = (
+            f"bestvideo[height={h}][vcodec^=avc1]+bestaudio[ext=m4a]/"
+            f"bestvideo[height={h}][vcodec^=av01]+bestaudio/"
+            f"bestvideo[height={h}]+bestaudio/"
+            f"best[height={h}]/best[height<={h}]"
+        )
+        outtmpl = str(out_dir / f"%(title)s [{label}].%(ext)s")
+        opts = {
+            **base,
+            "format": fmt,
+            "outtmpl": outtmpl,
+            "merge_output_format": "mp4",
+        }
+
+    with YoutubeDL(opts) as ydl:
+        ydl.download([url])
 
 
 def main():
-	# Require the user to enter a YouTube URL (no default)
-	while True:
-		url = input("YouTube URL: ").strip()
-		if url:
-			break
-		print("Please enter a valid YouTube URL.")
+    print("=== YouTube Downloader ===\n")
 
-	yt = YouTube(url, on_progress_callback=on_progress)
-	print(f"Title: {yt.title}")
+    url = ""
+    while not url:
+        url = input("YouTube link: ").strip()
+        if not url:
+            print("Please enter a valid link.")
 
-	resolutions, prog_map, vidonly_map, audio_best = list_resolutions(yt)
-	if not resolutions:
-		print("No video resolutions found. Exiting.")
-		return
+    print("\nFetching video info...\n")
+    try:
+        info = probe(url)
+    except Exception as e:
+        print(f"Error: could not fetch video info. ({e})")
+        sys.exit(1)
 
-	print("Available resolutions:")
-	for i, r in enumerate(resolutions, start=1):
-		tags = []
-		if r in prog_map:
-			tags.append("progressive")
-		if r in vidonly_map:
-			tags.append("video-only")
-		print(f" {i}) {r} [{' & '.join(tags)}]")
+    print(f"Title    : {info.get('title', 'unknown')}")
+    print(f"Channel  : {info.get('uploader', 'unknown')}")
+    print(f"Duration : {format_duration(info.get('duration'))}\n")
 
-	choice = input(f"Choose resolution number (1-{len(resolutions)}) [default {len(resolutions)}]: ")
-	try:
-		idx = int(choice) - 1 if choice.strip() else len(resolutions) - 1
-		if idx < 0 or idx >= len(resolutions):
-			raise ValueError
-	except Exception:
-		print("Invalid choice.")
-		return
+    menu = build_menu(info)
+    if len(menu) == 1:  # mp3 only
+        print("Warning: no downloadable video quality found.\n")
 
-	chosen_res = resolutions[idx]
-	print(f"Selected: {chosen_res}")
+    print("Quality options:")
+    for i, item in enumerate(menu, start=1):
+        print(f" {i}) {item['label']}")
 
-	# Prefer progressive (contains audio) if available
-	if chosen_res in prog_map:
-		stream = prog_map[chosen_res]
-		out_name = safe_filename(yt.title)
-		print(f"Downloading progressive stream ({chosen_res}) -> {out_name}")
-		stream.download(filename=out_name)
-		print("Download completed!")
-		return
+    choice = None
+    while choice is None:
+        sel = input(f"\nChoice (1-{len(menu)}): ").strip()
+        if sel.isdigit() and 1 <= int(sel) <= len(menu):
+            choice = menu[int(sel) - 1]
+        else:
+            print("Invalid choice.")
 
-	# else try video-only + audio merge
-	if chosen_res in vidonly_map:
-		video_stream = vidonly_map[chosen_res]
-		tempdir = tempfile.mkdtemp(prefix="ytdl_")
-		print(f"Downloading video-only to temp: {tempdir}")
-		video_path = video_stream.download(output_path=tempdir, filename="video.mp4")
+    out_dir = downloads_dir()
+    print(f"\nDownloading -> {out_dir}\n")
+    try:
+        download(url, choice, out_dir)
+    except Exception as e:
+        print(f"\nError: download failed. ({e})")
+        sys.exit(1)
 
-		audio_path = None
-		if audio_best:
-			print("Downloading best audio stream...")
-			audio_path = audio_best.download(output_path=tempdir, filename="audio.mp4")
-
-		out_name = safe_filename(yt.title)
-		ffmpeg_path = shutil.which("ffmpeg")
-		if ffmpeg_path and audio_path:
-			cmd = [ffmpeg_path, "-y", "-i", video_path, "-i", audio_path, "-c", "copy", out_name]
-			print("Merging with ffmpeg...")
-			try:
-				subprocess.check_call(cmd)
-				print(f"Saved merged file: {out_name}")
-			except subprocess.CalledProcessError:
-				print("ffmpeg merge failed. Video/audio files saved:")
-				print(video_path)
-				print(audio_path)
-		else:
-			print("ffmpeg not found or audio missing. Saved files:")
-			print(video_path)
-			if audio_path:
-				print(audio_path)
-			else:
-				print("No audio stream available to merge.")
-
-		# cleanup temp when merged
-		if ffmpeg_path and audio_path:
-			try:
-				os.remove(video_path)
-				os.remove(audio_path)
-				os.rmdir(tempdir)
-			except Exception:
-				pass
-
-		print("Done.")
-		return
-
-	print("Selected resolution not available as progressive or adaptive video.")
+    print(f"\nDone! File saved to '{out_dir}'.")
 
 
 if __name__ == "__main__":
-	main()
+    main()
